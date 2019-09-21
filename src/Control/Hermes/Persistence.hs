@@ -57,7 +57,7 @@ data NewSubjectStatus =
                    deriving (Show, Eq)
 
 data NewEventStatus =
-                      EventCreated
+                      EventCreated EventUid
                     | EventSubjectDoesNotExists
                    deriving (Show, Eq)
 

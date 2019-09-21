@@ -88,24 +88,24 @@ law x = do
         events <- listEvents kindBaseUid subjectBaseUid
         return (newEventResult, events)
     it "creating with an existing subject should listed" $ do
-      assert (EventCreated, Just [eventBase1]) $ runPersistance x $ do
+      assert (EventCreated eventBaseUUIDNeutral, Just [eventBase1]) $ runPersistance x $ do
         initPersistence
         newKind kindBase
         newSubject subjectBase
         newEventResult <- newEvent newEventBase1
         events <- listEvents kindBaseUid subjectBaseUid
-        return (newEventResult, map stabilizeEventUid <$> events)
+        return (stabilizeCreatedEventUid newEventResult, map stabilizeEventUid <$> events)
     it "creating two events should listed" $ do
-      assert (EventCreated, EventCreated, Just [eventBase1, eventBase2]) $ runPersistance x $ do
+      assert (EventCreated eventBaseUUIDNeutral, EventCreated eventBaseUUIDNeutral, Just [eventBase1, eventBase2]) $ runPersistance x $ do
         initPersistence
         newKind kindBase
         newSubject subjectBase
         newEventResult1 <- newEvent newEventBase1
         newEventResult2 <- newEvent newEventBase2
         events <- listEvents kindBaseUid subjectBaseUid
-        return (newEventResult1, newEventResult2, map stabilizeEventUid <$> events)
+        return (stabilizeCreatedEventUid newEventResult1, stabilizeCreatedEventUid newEventResult2, map stabilizeEventUid <$> events)
     it "creating an vent event twice should listed" $ do
-      assert (EventCreated, EventCreated, Just True, Just [eventBase1, eventBase1]) $ runPersistance x $ do
+      assert (EventCreated eventBaseUUIDNeutral, EventCreated eventBaseUUIDNeutral, Just True, Just [eventBase1, eventBase1]) $ runPersistance x $ do
         initPersistence
         newKind kindBase
         newSubject subjectBase
@@ -113,7 +113,7 @@ law x = do
         newEventResult2 <- newEvent newEventBase1
         events <- listEvents kindBaseUid subjectBaseUid
         let eventsUidDistinction e = all id $ zipWith ((/=) `on` eventUid) e (tail e)
-        return (newEventResult1, newEventResult2, eventsUidDistinction <$> events, map stabilizeEventUid <$> events)
+        return (stabilizeCreatedEventUid newEventResult1, stabilizeCreatedEventUid newEventResult2, eventsUidDistinction <$> events, map stabilizeEventUid <$> events)
 
 spec :: Spec
 spec = do
@@ -167,3 +167,8 @@ assert = flip shouldReturn
 
 stabilizeEventUid :: Event -> Event
 stabilizeEventUid x = x { eventUid = eventBaseUUIDNeutral }
+
+stabilizeCreatedEventUid :: NewEventStatus -> NewEventStatus
+stabilizeCreatedEventUid x = case x of
+                               EventCreated _ -> EventCreated eventBaseUUIDNeutral
+                               _              -> x

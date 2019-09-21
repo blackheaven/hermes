@@ -103,12 +103,12 @@ instance H.Persist (ReaderT SqlBackend (NoLoggingT (ResourceT IO))) where
       Just _ -> do
                   event <- liftIO $ H.buildNewEvent x
                   insert $ Event (H.eventKind event) (H.eventSubject event) (H.eventUid event) (H.extractAction $ H.eventAction event) (pack $ show $ H.extractEventData $ H.eventContent event)
-                  return H.EventCreated
+                  return $ H.EventCreated $ H.eventUid event
 
   listEvents kind subject = do
     fetchedSubject <- selectFirst [SubjectKind ==. kind, SubjectUid ==. subject] []
     sequence $ (const (map fromEntity <$> fetchEvents)) <$> fetchedSubject
-    where fetchEvents = map entityVal <$> selectList [EventKind ==. kind, EventSubject ==. subject] [Asc EventId]
+    where fetchEvents = map entityVal <$> selectList [EventKind ==. kind, EventSubject ==. subject] [Desc EventId]
           fromEntity event = H.Event (eventKind event) (eventSubject event) (eventUid event) (H.Action $ eventAction event) (H.EventData $ read $ unpack $ eventContent event)
 
 -- Helpers
