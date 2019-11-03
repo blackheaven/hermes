@@ -63,10 +63,6 @@ law x = do
         fetchKindResult <- fetchKind kindBaseUid
         return (newKindResult, fetchKindResult)
   describe "Subject" $ do
-    it "creating with a non existing kind should return an error" $ do
-      assert SubjectKindDoesNotExists $ runPersistance x $ do
-        initPersistence
-        newSubject subjectBase
     it "creating with an existing kind should be ok" $ do
       assert (KindCreated, SubjectCreated) $ runPersistance x $ do
         initPersistence
@@ -81,39 +77,33 @@ law x = do
         newSubjectResult2 <- newSubject subjectBase
         return (newKindResult, newSubjectResult1, newSubjectResult2)
   describe "Event" $ do
-    it "creating with a non existing subject should return an error" $ do
-      assert (EventSubjectDoesNotExists, Nothing) $ runPersistance x $ do
-        initPersistence
-        newEventResult <- newEvent newEventBase1
-        events <- listEvents kindBaseUid subjectBaseUid
-        return (newEventResult, events)
     it "creating with an existing subject should listed" $ do
-      assert (EventCreated eventBaseUUIDNeutral, Just [eventBase1]) $ runPersistance x $ do
+      assert [eventBase1] $ runPersistance x $ do
         initPersistence
         newKind kindBase
         newSubject subjectBase
-        newEventResult <- newEvent newEventBase1
+        newEvent newEventBase1
         events <- listEvents kindBaseUid subjectBaseUid
-        return (stabilizeCreatedEventUid newEventResult, map stabilizeEventUid <$> events)
+        return $ map stabilizeEventUid events
     it "creating two events should listed" $ do
-      assert (EventCreated eventBaseUUIDNeutral, EventCreated eventBaseUUIDNeutral, Just [eventBase1, eventBase2]) $ runPersistance x $ do
+      assert [eventBase1, eventBase2] $ runPersistance x $ do
         initPersistence
         newKind kindBase
         newSubject subjectBase
-        newEventResult1 <- newEvent newEventBase1
-        newEventResult2 <- newEvent newEventBase2
+        newEvent newEventBase1
+        newEvent newEventBase2
         events <- listEvents kindBaseUid subjectBaseUid
-        return (stabilizeCreatedEventUid newEventResult1, stabilizeCreatedEventUid newEventResult2, map stabilizeEventUid <$> events)
+        return $ map stabilizeEventUid events
     it "creating an vent event twice should listed" $ do
-      assert (EventCreated eventBaseUUIDNeutral, EventCreated eventBaseUUIDNeutral, Just True, Just [eventBase1, eventBase1]) $ runPersistance x $ do
+      assert (True, [eventBase1, eventBase1]) $ runPersistance x $ do
         initPersistence
         newKind kindBase
         newSubject subjectBase
-        newEventResult1 <- newEvent newEventBase1
-        newEventResult2 <- newEvent newEventBase1
+        newEvent newEventBase1
+        newEvent newEventBase1
         events <- listEvents kindBaseUid subjectBaseUid
         let eventsUidDistinction e = all id $ zipWith ((/=) `on` eventUid) e (tail e)
-        return (stabilizeCreatedEventUid newEventResult1, stabilizeCreatedEventUid newEventResult2, eventsUidDistinction <$> events, map stabilizeEventUid <$> events)
+        return (eventsUidDistinction events, map stabilizeEventUid events)
 
 spec :: Spec
 spec = do
@@ -167,8 +157,3 @@ assert = flip shouldReturn
 
 stabilizeEventUid :: Event -> Event
 stabilizeEventUid x = x { eventUid = eventBaseUUIDNeutral }
-
-stabilizeCreatedEventUid :: NewEventStatus -> NewEventStatus
-stabilizeCreatedEventUid x = case x of
-                               EventCreated _ -> EventCreated eventBaseUUIDNeutral
-                               _              -> x

@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -15,6 +16,8 @@ module Control.Hermes.Persistence.SQLite(persistSQLite) where
 import qualified Control.Hermes.Persistence as H
 import Control.Hermes.Persistence.Persistent
 import qualified Control.Hermes.Types as H
+import Control.Monad(join)
+import Control.Monad.Catch(catch, SomeException)
 import Control.Monad.IO.Class(liftIO)
 import Control.Monad.Logger(NoLoggingT)
 import Control.Monad.Trans.Reader(ReaderT)
@@ -29,9 +32,9 @@ import Database.Persist.TH
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Kind
-    uid H.KindUid
-    eventIndex Int64
-    actions [String]
+    uid         H.KindUid
+    eventIndex  Int64
+    actions     [String]
     Primary uid eventIndex
     deriving Show
 Subject
@@ -43,6 +46,7 @@ Event
     kind    H.KindUid
     subject H.SubjectUid
     uid     H.EventUid
+    index   Int64
     action  String
     content Text
     Primary kind subject uid
@@ -63,52 +67,53 @@ instance H.Persist (ReaderT SqlBackend (NoLoggingT (ResourceT IO))) where
   initPersistence = runMigration migrateAll
 
   newKind kind = do
-    fetched <- aggregateKindRecords $ H.kindUid kind
-    case fetched of
-      Just _  -> return H.KindAlreadyExisting
-      Nothing -> do
-                  insert_ $ Kind (H.kindUid kind) 0 (nub $ map H.extractAction $ H.kindActions kind)
-                  return H.KindCreated
+    flip catch catcher $ do
+      insert_ $ Kind (H.kindUid kind) 0 (nub $ map H.extractAction $ H.kindActions kind)
+      return H.KindCreated
+    where catcher :: forall m. Monad m => SomeException -> m H.NewKindStatus
+          catcher _ = return H.KindAlreadyExisting
 
   fetchKind uid = do
     fetched <- aggregateKindRecords uid
     return $ fmap (\(Kind u _ a) -> H.Kind u $ map H.Action a) fetched
 
   addAction uid (H.Action action) = do
-    fetched <- aggregateKindRecords uid
-    case fetched of
-      Nothing -> return H.ActionKindDoesNotExists
-      Just (Kind _ i a) -> if elem action a
-                             then return H.ActionAlreadyExisting
-                             else do
-                               insert_ $ Kind uid (i + 1) [action]
-                               return H.ActionAdded
+    aggregatedKind  <- aggregateKindRecords uid
+    case aggregatedKind of
+      Nothing           -> return H.ActionKindNotExists
+      Just (Kind _ i a) -> do
+        if elem action a
+          then return H.ActionAlreadyExisting
+          else do
+            insert_ $ Kind uid (i + 1) [action]
+            return H.ActionAdded
 
   newSubject subject = do
-    fetchedKind <- aggregateKindRecords $ H.subjectKind subject
-    case fetchedKind of
-      Nothing -> return H.SubjectKindDoesNotExists
-      Just _ -> do
-                  fetched <- selectFirst [SubjectKind ==. H.subjectKind subject, SubjectUid ==. H.subjectUid subject] []
-                  case fetched of
-                    Just _ -> return H.SubjectAlreadyExisting
-                    Nothing -> do
-                                insert_ $ Subject (H.subjectKind subject) (H.subjectUid subject)
-                                return H.SubjectCreated
+    flip catch catcher $ do
+      insert_ $ Subject (H.subjectKind subject) (H.subjectUid subject)
+      return H.SubjectCreated
+    where catcher :: forall m. Monad m => SomeException -> m H.NewSubjectStatus
+          catcher _ = return H.SubjectAlreadyExisting
+
+  fetchSubject kind uid = do
+    fmap (fromEntity . entityVal) <$> selectFirst [SubjectKind ==. kind, SubjectUid ==. uid] []
+    where fromEntity x = H.Subject (subjectKind x) (subjectUid x)
+
+  listAllowedActions kind subject = do
+    fetchedSubject <- H.fetchSubject kind subject
+    fetchedKind <- sequence $ const (H.fetchKind kind)  <$> fetchedSubject
+    return $ H.kindActions <$> join fetchedKind
 
   newEvent x = do
-    fetchedSubject <- selectFirst [SubjectKind ==. H.newEventKind x, SubjectUid ==. H.newEventSubject x] []
-    case fetchedSubject of
-      Nothing -> return H.EventSubjectDoesNotExists
-      Just _ -> do
-                  event <- liftIO $ H.buildNewEvent x
-                  insert $ Event (H.eventKind event) (H.eventSubject event) (H.eventUid event) (H.extractAction $ H.eventAction event) (pack $ show $ H.extractEventData $ H.eventContent event)
-                  return $ H.EventCreated $ H.eventUid event
+    event <- liftIO $ H.buildNewEvent x
+    events <- H.listEvents (H.eventKind event) (H.eventSubject event)
+    let nextEventIndex = fromIntegral $ length events
+    insert_ $ Event (H.eventKind event) (H.eventSubject event) (H.eventUid event) nextEventIndex (H.extractAction $ H.eventAction event) (pack $ show $ H.extractEventData $ H.eventContent event)
+    return $ H.eventUid event
 
   listEvents kind subject = do
-    fetchedSubject <- selectFirst [SubjectKind ==. kind, SubjectUid ==. subject] []
-    sequence $ (const (map fromEntity <$> fetchEvents)) <$> fetchedSubject
-    where fetchEvents = map entityVal <$> selectList [EventKind ==. kind, EventSubject ==. subject] [Desc EventId]
+    map fromEntity <$> fetchEvents
+    where fetchEvents = map entityVal <$> selectList [EventKind ==. kind, EventSubject ==. subject] [Asc EventIndex]
           fromEntity event = H.Event (eventKind event) (eventSubject event) (eventUid event) (H.Action $ eventAction event) (H.EventData $ read $ unpack $ eventContent event)
 
 -- Helpers

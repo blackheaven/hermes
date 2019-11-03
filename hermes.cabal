@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Control.Hermes.Types
+  exposed-modules:     Control.Hermes.Actions
+                     , Control.Hermes.Types
                      , Control.Hermes.Persistence
                      , Control.Hermes.Persistence.SQLite
                      , Control.Hermes.Persistence.Persistent
@@ -23,6 +24,7 @@ library
                      , aeson >= 1.4.2.0 && < 1.5
                      , either >= 5.0.1.1 && < 5.0.2
                      , monad-logger >= 0.3.30 && < 0.4
+                     , exceptions >= 0.10.2 && < 0.11
                      , persistent >= 2.9.2 && < 2.10
                      , persistent-sqlite >= 2.9.2 && < 2.10
                      , persistent-template >= 2.5.4 && < 2.6
@@ -65,6 +67,7 @@ test-suite hermes-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   other-modules:       Control.Hermes.PersistenceSpec
+                     , Control.Hermes.ActionsSpec
   main-is:             Spec.hs
   build-depends:       base
                      , hermes

@@ -7,7 +7,6 @@ module Control.Hermes.Persistence(
                                  , NewKindStatus(..)
                                  , NewActionStatus(..)
                                  , NewSubjectStatus(..)
-                                 , NewEventStatus(..)
                                  , NewEvent(..)
                                  , buildNewEvent
                                  ) where
@@ -29,8 +28,10 @@ class Monad p => Persist p where
   fetchKind            :: KindUid -> p (Maybe Kind)
   addAction            :: KindUid -> Action -> p NewActionStatus
   newSubject           :: Subject -> p NewSubjectStatus
-  newEvent             :: NewEvent -> p NewEventStatus
-  listEvents           :: KindUid -> SubjectUid -> p (Maybe [Event])
+  fetchSubject         :: KindUid -> SubjectUid -> p (Maybe Subject)
+  listAllowedActions   :: KindUid -> SubjectUid -> p (Maybe [Action])
+  newEvent             :: NewEvent -> p EventUid
+  listEvents           :: KindUid -> SubjectUid -> p [Event]
 
 data NewEvent = NewEvent {
                 newEventKind    :: KindUid
@@ -47,18 +48,12 @@ data NewKindStatus =
 data NewActionStatus =
                        ActionAdded
                      | ActionAlreadyExisting
-                     | ActionKindDoesNotExists
+                     | ActionKindNotExists
                    deriving (Show, Eq)
 
 data NewSubjectStatus =
                         SubjectCreated
                       | SubjectAlreadyExisting
-                      | SubjectKindDoesNotExists
-                   deriving (Show, Eq)
-
-data NewEventStatus =
-                      EventCreated EventUid
-                    | EventSubjectDoesNotExists
                    deriving (Show, Eq)
 
 makeUUID :: NewEvent -> IO UUID
