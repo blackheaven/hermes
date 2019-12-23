@@ -5,6 +5,7 @@
 
 module ApiType where
 
+import qualified Control.Hermes.Types as T
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Proxy
@@ -40,6 +41,10 @@ instance ToJSON Action
 instance FromJSON Action
 instance FromHttpApiData Action where
   parseUrlPiece = fmap Action . parseUrlPiece
+
+convertAction :: Action -> T.Action
+convertAction (Action x) = T.Action x
+
 data KindBody = KindBody [Action] deriving Generic
 instance ToJSON KindBody
 instance FromJSON KindBody
@@ -61,7 +66,7 @@ instance ToJSON EventData
 instance FromJSON EventData
 
 data Event = Event {
-             uid     :: KindUid
+             uid     :: EventUid
            , action  :: Action
            , content :: EventData
            } deriving Generic

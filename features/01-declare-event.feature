@@ -10,7 +10,7 @@ Feature: Declare event
         Then an event uid $event2_uid should be retrieved
         When fetching "cat" events of "hera"
         Then the following events are retrieved:
-            | uid         | action  | data                                 |
+            | uid         | action  | content                              |
             | $event0_uid | init    | {"name": "hera"}                     |
             | $event1_uid | release | {"name": "ares", "gender": "male"}   |
             | $event2_uid | release | {"name": "eris", "gender": "female"} |
