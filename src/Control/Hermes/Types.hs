@@ -10,6 +10,9 @@ module Control.Hermes.Types(
                            , EventUid(..)
                            , EventData(..)
                            , Event(..)
+                           , Subscriber(..)
+                           , Subscription(..)
+                           , Notification
                            , extractAction
                            , extractEventData
                            ) where
@@ -46,9 +49,17 @@ instance Ord EventData where
   compare (EventData x) (EventData y) = show x `compare` show y
 
 data Event = Event {
-             eventKind    :: KindUid
-           , eventSubject :: SubjectUid
+             eventSubject :: Subject
            , eventUid     :: EventUid
            , eventAction  :: Action
            , eventContent :: EventData
            } deriving (Eq, Generic, Ord, Read, Show)
+
+newtype Subscriber = Subscriber String deriving (Eq, Generic, Ord, Read, Show)
+
+data Subscription = Subscription {
+                    subscriber :: Subscriber
+                  , subject    :: Subject
+                  } deriving (Eq, Generic, Ord, Read, Show)
+
+type Notification = Event

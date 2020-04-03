@@ -4,6 +4,9 @@ module Control.Hermes.Actions(
                              , createSubject
                              , addEvent
                              , listEvents
+                             , subscribe
+                             , unsubscribe
+                             , viewNotifiations
                              , NewKindStatusError(..)
                              , NewActionStatusError(..)
                              , NewSubjectStatusError(..)
@@ -12,6 +15,7 @@ module Control.Hermes.Actions(
 
 import qualified Control.Hermes.Persistence as P
 import Control.Hermes.Types
+import Data.Maybe(isJust)
 
 createKind :: P.Persist p => Kind -> p (Either NewKindStatusError ())
 createKind kind = do
@@ -37,11 +41,11 @@ createSubject subject eventData = do
       subjectResult <- P.newSubject subject
       case subjectResult of
         P.SubjectAlreadyExisting -> return $ Left SubjectAlreadyExistingError
-        P.SubjectCreated -> Right <$> P.newEvent (P.NewEvent (subjectKind subject) (subjectUid subject) (Action "init") eventData)
+        P.SubjectCreated -> Right <$> P.newEvent (P.NewEvent subject (Action "init") eventData)
 
 addEvent :: P.Persist p => P.NewEvent -> p (Either NewEventStatusError EventUid)
 addEvent event = do
-  allowedActions <- P.listAllowedActions (P.newEventKind event) (P.newEventSubject event)
+  allowedActions <- P.listAllowedActions (P.newEventSubject event)
   case allowedActions of
     Nothing      -> return $ Left EventSubjectDoesNotExistsError
     Just actions -> do
@@ -49,9 +53,21 @@ addEvent event = do
         then return $ Left EventActionNotAllowedError
         else Right <$> P.newEvent event
 
-listEvents :: P.Persist p => KindUid -> SubjectUid -> p (Maybe [Event])
-listEvents kind subject = toMaybe <$> P.listEvents kind subject
+listEvents :: P.Persist p => Subject -> p (Maybe [Event])
+listEvents subject = toMaybe <$> P.listEvents subject
   where toMaybe x = if null x then Nothing else Just x
+
+subscribe :: P.Persist p => Subscription -> p Bool
+subscribe subscription = isJust <$> P.subscribe subscription
+
+unsubscribe :: P.Persist p => Subscription -> p Bool
+unsubscribe subscription = isJust <$> P.unsubscribe subscription
+
+viewNotifiations :: P.Persist p => Subscriber -> Bool -> p [Notification]
+viewNotifiations subscriber view = do
+  notifications <- P.listNotifiations subscriber
+  if view then P.viewNotifiations subscriber else return ()
+  return notifications
 
 data NewKindStatusError =
                           KindAlreadyExistingError

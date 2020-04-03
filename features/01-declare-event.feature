@@ -1,6 +1,6 @@
 Feature: Declare event
 
-    Scenario: The consumer declares two news events and fetch them
+    Scenario: The consumer declares two new events and fetch them
         Given "cat" is a declared subject kind with ["release"] actions
         When declaring a new "cat" subject as "hera" with data {"name": "hera"}
         Then an event uid $event0_uid should be retrieved

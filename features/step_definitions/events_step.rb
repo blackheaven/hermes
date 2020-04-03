@@ -32,6 +32,30 @@ When(/fetching "([^"]+)" events of "([^"]+)"/) do |kind, uid|
 end
 
 Then(/the following events are retrieved:/) do |table|
+  zip_table(table)
+end
+
+When(/^subscribing to the "([^"]+)" subject "([^"]+)" as "([^"]+)"/) do |kind, subject, subscriber|
+  $response = RestClient.post "http://localhost:8080/subscribers/" + subscriber, {kind: kind, subject: subject}.to_json, {content_type: :json, accept: :json}
+  expect($response.code).to eq(200)
+end
+
+When(/fetching subscriptions of "([^"]+)"/) do |subscriber|
+  $response = RestClient.get "http://localhost:8080/subscribers/" + subscriber, {accept: :json}
+  expect($response.code).to eq(200)
+end
+
+When(/^unsubscribing to the "([^"]+)" subject "([^"]+)" as "([^"]+)"/) do |kind, subject, subscriber|
+  $response = RestClient.delete "http://localhost:8080/subscribers/" + subscriber, {kind: kind, subject: subject}.to_json, {content_type: :json, accept: :json}
+  expect($response.code).to eq(200)
+end
+
+Then(/the following subscriptions are retrieved:/) do |table|
+  zip_table(table)
+end
+
+
+def zip_table(table)
   raw = table.raw
   headers = raw.shift
   expected = raw.map do |line|
@@ -48,7 +72,8 @@ Then(/the following events are retrieved:/) do |table|
     end
     Hash[headers.zip(intr_line)]
   end
-  expect(expected).to eq(JSON.parse($response.body)), $response.body
+  structured_response = JSON.parse($response.body).map { |line| line.select { |key, val| headers.include?(key) } }
+  expect(expected).to eq(structured_response), $response.body
 end
 
 def port_open?(ip, port, seconds=1)
@@ -65,7 +90,10 @@ rescue Timeout::Error
 end
 
 $server = nil
-Before do
+Around do |scenario, block|
+  if $server
+    Process.kill "TERM", $server
+  end
 
   $server = fork do
     Dir.mktmpdir do |dir|
@@ -76,8 +104,11 @@ Before do
   Timeout::timeout(5) do
     sleep(0.1) until port_open?("localhost", 8080)
   end
+
+  block.call
 end
 
 After do
   Process.kill "TERM", $server
 end
+

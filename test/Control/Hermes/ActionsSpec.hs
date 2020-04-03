@@ -69,7 +69,7 @@ law x = do
       assert (Left EventSubjectDoesNotExistsError, Nothing) $ P.runPersistance x $ do
         P.initPersistence
         newEventResult <- addEvent newEventBase1
-        events <- listEvents kindBaseUid subjectBaseUid
+        events <- listEvents subjectBase
         return (newEventResult, events)
     it "creating with an unknown action should return an error" $ do
       assert (Left EventActionNotAllowedError, Just [eventBaseInit]) $ P.runPersistance x $ do
@@ -77,7 +77,7 @@ law x = do
         createKind kindBase
         createSubject subjectBase subjectBaseEventData
         addEventResult <- addEvent newEventAdditionalInformation
-        events <- listEvents kindBaseUid subjectBaseUid
+        events <- listEvents subjectBase
         return (addEventResult, map stabilizeEventUid <$> events)
     it "creating with an existing subject should listed" $ do
       assert (Just [eventBaseInit, eventBase1]) $ P.runPersistance x $ do
@@ -85,7 +85,7 @@ law x = do
         createKind kindBase
         createSubject subjectBase subjectBaseEventData
         addEvent newEventBase1
-        events <- listEvents kindBaseUid subjectBaseUid
+        events <- listEvents subjectBase
         return $ map stabilizeEventUid <$> events
     it "creating two events should listed" $ do
       assert (Just [eventBaseInit, eventBase1, eventBase2]) $ P.runPersistance x $ do
@@ -94,7 +94,7 @@ law x = do
         createSubject subjectBase subjectBaseEventData
         newEventResult1 <- addEvent newEventBase1
         newEventResult2 <- addEvent newEventBase2
-        events <- listEvents kindBaseUid subjectBaseUid
+        events <- listEvents subjectBase
         return $ map stabilizeEventUid <$> events
     it "creating an vent event twice should listed" $ do
       assert (Just True, Just [eventBaseInit, eventBase1, eventBase1]) $ P.runPersistance x $ do
@@ -103,9 +103,119 @@ law x = do
         createSubject subjectBase subjectBaseEventData
         addEvent newEventBase1
         addEvent newEventBase1
-        events <- listEvents kindBaseUid subjectBaseUid
+        events <- listEvents subjectBase
         let eventsUidDistinction e = all id $ zipWith ((/=) `on` eventUid) e (tail e)
         return (eventsUidDistinction <$> events, map stabilizeEventUid <$> events)
+  describe "Subscription" $ do
+    it "creating with an existing subject should be ok" $ do
+      assert True $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+    it "creating with an unknown subject should be empty" $ do
+      assert False $ P.runPersistance x $ do
+        P.initPersistence
+        subscribe subscriptionBase
+    it "deleting an existing subscription should be ok" $ do
+      assert (True, True) $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        action1 <- subscribe subscriptionBase
+        action2 <- unsubscribe subscriptionBase
+        return (action1, action2)
+    it "deleting an unknown subscription should be empty" $ do
+      assert False $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        unsubscribe subscriptionBase
+  describe "Notification" $ do
+    it "listing an unknown subscriber should be empty" $ do
+      assert [] $ P.runPersistance x $ do
+        P.initPersistence
+        viewNotifiations subscriberBase True
+    it "listing with a new subscription should be empty" $ do
+      assert [] $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        viewNotifiations subscriberBase True
+    it "listing with a deleted subscription and an event should be empty" $ do
+      assert [] $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        addEvent newEventBase2
+        unsubscribe subscriptionBase
+        addEvent newEventBase3
+        viewNotifiations subscriberBase True
+    it "listing with subscriptions and events should be filled" $ do
+      assert [eventBase2, eventBase3] $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        addEvent newEventBase2
+        addEvent newEventBase3
+        map stabilizeEventUid <$> viewNotifiations subscriberBase True
+    it "listing with a subscription deleted and recreated and events should be filled with the last events" $ do
+      assert [eventBase3] $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        addEvent newEventBase2
+        unsubscribe subscriptionBase
+        subscribe subscriptionBase
+        addEvent newEventBase3
+        map stabilizeEventUid <$> viewNotifiations subscriberBase True
+    it "listing and not checking with subscriptions and events should be filled twice" $ do
+      assert ([eventBase2, eventBase3], [eventBase2, eventBase3]) $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        addEvent newEventBase2
+        addEvent newEventBase3
+        l1 <- viewNotifiations subscriberBase False
+        l2 <- viewNotifiations subscriberBase False
+        return (map stabilizeEventUid l1, map stabilizeEventUid l2)
+    it "listing and checking with subscriptions and events should be filled once" $ do
+      assert ([eventBase2, eventBase3], []) $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        addEvent newEventBase2
+        addEvent newEventBase3
+        l1 <- viewNotifiations subscriberBase True
+        l2 <- viewNotifiations subscriberBase True
+        return (map stabilizeEventUid l1, map stabilizeEventUid l2)
+    it "listing with subscriptions and events should be filled then empty after viewing" $ do
+      assert ([eventBase2], [], [eventBase3]) $ P.runPersistance x $ do
+        P.initPersistence
+        createKind kindBase
+        createSubject subjectBase subjectBaseEventData
+        addEvent newEventBase1
+        subscribe subscriptionBase
+        addEvent newEventBase2
+        l1 <- viewNotifiations subscriberBase True
+        l2 <- viewNotifiations subscriberBase True
+        addEvent newEventBase3
+        l3 <- viewNotifiations subscriberBase True
+        return (map stabilizeEventUid l1, map stabilizeEventUid l2, map stabilizeEventUid l3)
 
 spec :: Spec
 spec = do
@@ -145,22 +255,34 @@ eventBaseUUIDNeutral :: EventUid
 eventBaseUUIDNeutral = EventUid $ fromJust $ fromString "00000000-0000-0000-0000-000000000000"
 
 eventBaseInit :: Event
-eventBaseInit = Event kindBaseUid subjectBaseUid eventBaseUUIDNeutral (Action "init") (EventData $ Bool True)
+eventBaseInit = Event subjectBase eventBaseUUIDNeutral (Action "init") (EventData $ Bool True)
 
 eventBase1 :: Event
-eventBase1 = Event kindBaseUid subjectBaseUid eventBaseUUIDNeutral actionBase1 (EventData $ Bool True)
+eventBase1 = Event subjectBase eventBaseUUIDNeutral actionBase1 (EventData $ Bool True)
 
 eventBase2 :: Event
-eventBase2 = Event kindBaseUid subjectBaseUid eventBaseUUIDNeutral actionBase2 (EventData $ Bool False)
+eventBase2 = Event subjectBase eventBaseUUIDNeutral actionBase2 (EventData $ Bool False)
+
+eventBase3 :: Event
+eventBase3 = Event subjectBase eventBaseUUIDNeutral actionBase2 (EventData $ Bool True)
 
 newEventBase1 :: P.NewEvent
-newEventBase1 = P.NewEvent kindBaseUid subjectBaseUid actionBase1 (EventData $ Bool True)
+newEventBase1 = P.NewEvent subjectBase actionBase1 (EventData $ Bool True)
 
 newEventBase2 :: P.NewEvent
-newEventBase2 = P.NewEvent kindBaseUid subjectBaseUid actionBase2 (EventData $ Bool False)
+newEventBase2 = P.NewEvent subjectBase actionBase2 (EventData $ Bool False)
+
+newEventBase3 :: P.NewEvent
+newEventBase3 = P.NewEvent subjectBase actionBase2 (EventData $ Bool True)
 
 newEventAdditionalInformation :: P.NewEvent
-newEventAdditionalInformation = P.NewEvent kindBaseUid subjectBaseUid actionAdditional (EventData $ Bool False)
+newEventAdditionalInformation = P.NewEvent subjectBase actionAdditional (EventData $ Bool False)
+
+subscriberBase :: Subscriber
+subscriberBase = Subscriber "marvin"
+
+subscriptionBase :: Subscription
+subscriptionBase = Subscription subscriberBase subjectBase
 
 -- Helpers
 assert :: (HasCallStack, Show a, Eq a) => a -> IO a -> Expectation

@@ -22,11 +22,16 @@ import Control.Monad.IO.Class(liftIO)
 import Control.Monad.Logger(NoLoggingT)
 import Control.Monad.Trans.Reader(ReaderT)
 import Control.Monad.Trans.Resource(MonadUnliftIO, ResourceT)
+import Data.Functor(($>))
 import Data.Int(Int64)
-import Data.List(nub)
+import Data.List(foldl', nub)
+import qualified Data.Map.Lazy as M
+import Data.Maybe(maybe, listToMaybe)
+import qualified Data.Set as S
 import Data.Text(Text, pack, unpack)
 import Data.UUID(UUID, toString)
 import Database.Persist
+import Database.Persist.Sql(runMigrationSilent)
 import Database.Persist.Sqlite
 import Database.Persist.TH
 
@@ -43,13 +48,24 @@ Subject
     Primary kind uid
     deriving Show
 Event
-    kind    H.KindUid
-    subject H.SubjectUid
+    subject H.Subject
     uid     H.EventUid
     index   Int64
     action  String
     content Text
-    Primary kind subject uid
+    UniqueEventUid subject uid
+    UniqueEventIndex subject index
+    deriving Show
+Subscription
+    subscriber H.Subscriber
+    subject    H.Subject
+    index      Int64
+    subscribe  Bool
+    deriving Show
+Viewing
+    subscriber  H.Subscriber
+    globalIndex EventId
+    Primary subscriber
     deriving Show
 |]
 
@@ -64,7 +80,7 @@ instance H.Persist (ReaderT SqlBackend (NoLoggingT (ResourceT IO))) where
 
   runPersistance db = runSqlite $ dbPath db
 
-  initPersistence = runMigration migrateAll
+  initPersistence = runMigrationSilent migrateAll >> return ()
 
   newKind kind = do
     flip catch catcher $ do
@@ -95,29 +111,54 @@ instance H.Persist (ReaderT SqlBackend (NoLoggingT (ResourceT IO))) where
     where catcher :: forall m. Monad m => SomeException -> m H.NewSubjectStatus
           catcher _ = return H.SubjectAlreadyExisting
 
-  fetchSubject kind uid = do
+  fetchSubject (H.Subject kind uid) = do
     fmap (fromEntity . entityVal) <$> selectFirst [SubjectKind ==. kind, SubjectUid ==. uid] []
     where fromEntity x = H.Subject (subjectKind x) (subjectUid x)
 
-  listAllowedActions kind subject = do
-    fetchedSubject <- H.fetchSubject kind subject
+  listAllowedActions subject@(H.Subject kind _) = do
+    fetchedSubject <- H.fetchSubject subject
     fetchedKind <- sequence $ const (H.fetchKind kind)  <$> fetchedSubject
     return $ H.kindActions <$> join fetchedKind
 
   newEvent x = do
     event <- liftIO $ H.buildNewEvent x
-    events <- H.listEvents (H.eventKind event) (H.eventSubject event)
+    events <- H.listEvents (H.eventSubject event)
     let nextEventIndex = fromIntegral $ length events
-    insert_ $ Event (H.eventKind event) (H.eventSubject event) (H.eventUid event) nextEventIndex (H.extractAction $ H.eventAction event) (pack $ show $ H.extractEventData $ H.eventContent event)
+    id <- insert $ Event (H.eventSubject event) (H.eventUid event) nextEventIndex (H.extractAction $ H.eventAction event) (pack $ show $ H.extractEventData $ H.eventContent event)
     return $ H.eventUid event
 
-  listEvents kind subject = do
-    map fromEntity <$> fetchEvents
-    where fetchEvents = map entityVal <$> selectList [EventKind ==. kind, EventSubject ==. subject] [Asc EventIndex]
-          fromEntity event = H.Event (eventKind event) (eventSubject event) (eventUid event) (H.Action $ eventAction event) (H.EventData $ read $ unpack $ eventContent event)
+  listEvents subject = do
+    map eventFromEntity <$> fetchEvents
+    where fetchEvents = map entityVal <$> selectList [EventSubject ==. subject] [Asc EventIndex]
+
+  subscribe  (H.Subscription subscriber subject) = do
+    event <- lastEvent subject
+    let perform e = insertSubscription subscriber subject e True $> eventUid e
+    sequence $ perform <$> event
+
+  unsubscribe  (H.Subscription subscriber subject) = do
+    event <- lastEvent subject
+    previousSubscriptionEvent <- fmap entityVal <$> selectFirst [SubscriptionSubscriber ==. subscriber, SubscriptionSubject ==. subject] [Desc SubscriptionIndex]
+    let previousSubscription = previousSubscriptionEvent >>= \e -> if subscriptionSubscribe e then Just e else Nothing
+    sequence $ flip fmap (previousSubscription >> event) $ (\e -> insertSubscription subscriber subject e False $> eventUid e)
+
+  listNotifiations subscriber = do
+    lastViewing <- fmap (viewingGlobalIndex . entityVal) <$> selectFirst [ViewingSubscriber ==. subscriber] []
+    subscriptionsEvents <- fmap entityVal <$> selectList [SubscriptionSubscriber ==. subscriber] [Asc SubscriptionIndex]
+    let subscriptions = listSubscriptions subscriptionsEvents
+    let newEventsSinceLastTime l = selectList [EventId >. l, EventSubject <-. map fst subscriptions] [Asc EventId]
+    let newEventsFromBeginning = selectList [EventSubject <-. map fst subscriptions] [Asc EventId]
+    let subscriptionMap = M.fromList subscriptions
+    let takeSinceSubscription e = eventIndex e > subscriptionMap M.! eventSubject e
+    (map eventFromEntity . filter takeSinceSubscription . map entityVal) <$> maybe newEventsFromBeginning newEventsSinceLastTime lastViewing
+
+  viewNotifiations subscriber = do
+    lastEvent <- listToMaybe <$> selectKeysList [] [LimitTo 1, Desc EventId]
+    let fetchViewingKey = listToMaybe <$> selectKeysList [ViewingSubscriber ==. subscriber] [LimitTo 1]
+    let perform r = fetchViewingKey >>= maybe (insert_ r) (flip replace r)
+    sequence_ $ (perform . Viewing subscriber) <$> lastEvent
 
 -- Helpers
-
 aggregateKindRecords :: H.KindUid -> SQLiteAction IO (Maybe Kind)
 aggregateKindRecords uid = do
   records <- selectList [KindUid ==. uid] [Asc KindEventIndex]
@@ -125,3 +166,29 @@ aggregateKindRecords uid = do
     then return Nothing
     else return $ Just (buildKind records)
   where buildKind = foldr1 (\(Kind _ _ x) (Kind _ i y) -> Kind uid i (x ++ y)) . map entityVal
+
+lastEvent :: H.Subject -> SQLiteAction IO (Maybe Event)
+lastEvent subject =
+  fmap entityVal <$> selectFirst [EventSubject ==. subject] [Desc EventIndex]
+
+insertSubscription :: H.Subscriber -> H.Subject -> Event -> Bool -> SQLiteAction IO ()
+insertSubscription subscriber subject event subscribe =
+  insert_ $ Subscription subscriber subject (eventIndex event) subscribe
+
+eventFromEntity :: Event -> H.Event
+eventFromEntity event = H.Event (eventSubject event) (eventUid event) (H.Action $ eventAction event) (H.EventData $ read $ unpack $ eventContent event)
+
+listSubscriptions :: [Subscription] -> [(H.Subject, Int64)]
+listSubscriptions = map getSubscriptionResult . S.toList . foldl' go S.empty
+  where go xs x = let result = (SubscriptionResult (subscriptionSubject x, subscriptionIndex x))
+                    in if subscriptionSubscribe x
+                        then S.insert result xs
+                        else S.delete result xs
+
+newtype SubscriptionResult = SubscriptionResult { getSubscriptionResult :: (H.Subject, Int64) }
+
+instance Eq SubscriptionResult where
+  SubscriptionResult (x, _) == SubscriptionResult (y, _) = x == y
+
+instance Ord SubscriptionResult where
+  SubscriptionResult (x, _) `compare` SubscriptionResult (y, _) = x `compare` y

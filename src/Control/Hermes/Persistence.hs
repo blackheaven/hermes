@@ -28,14 +28,17 @@ class Monad p => Persist p where
   fetchKind            :: KindUid -> p (Maybe Kind)
   addAction            :: KindUid -> Action -> p NewActionStatus
   newSubject           :: Subject -> p NewSubjectStatus
-  fetchSubject         :: KindUid -> SubjectUid -> p (Maybe Subject)
-  listAllowedActions   :: KindUid -> SubjectUid -> p (Maybe [Action])
+  fetchSubject         :: Subject -> p (Maybe Subject)
+  listAllowedActions   :: Subject -> p (Maybe [Action])
   newEvent             :: NewEvent -> p EventUid
-  listEvents           :: KindUid -> SubjectUid -> p [Event]
+  listEvents           :: Subject -> p [Event]
+  subscribe            :: Subscription -> p (Maybe EventUid)
+  unsubscribe          :: Subscription -> p (Maybe EventUid)
+  listNotifiations     :: Subscriber -> p [Notification]
+  viewNotifiations     :: Subscriber -> p ()
 
 data NewEvent = NewEvent {
-                newEventKind    :: KindUid
-              , newEventSubject :: SubjectUid
+                newEventSubject :: Subject
               , newEventAction  :: Action
               , newEventContent :: EventData
               } deriving (Show, Eq, Generic)
@@ -65,6 +68,7 @@ makeUUID e = do
 buildNewEvent :: NewEvent -> IO Event
 buildNewEvent e = do
   uuid <- makeUUID e
-  return $ Event (newEventKind e) (newEventSubject e) (EventUid uuid) (newEventAction e) (newEventContent e)
+  return $ Event (newEventSubject e) (EventUid uuid) (newEventAction e) (newEventContent e)
+
 eventOID :: UUID
 eventOID = fromJust $ fromString "11e1bcce-3e11-ec11-ce11-e3eccb1e1111"

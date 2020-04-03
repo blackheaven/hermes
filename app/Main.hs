@@ -47,19 +47,37 @@ event :: P.Persist p => ServerT EventEndpoint (LiftedHandler p)
 event = post :<|> get
   where post :: P.Persist p => KindUid -> SubjectUid -> Action -> EventData -> LiftedHandler p NewEvent
         post kind subject action body = LiftHandler $ do
-          creation <- A.addEvent (P.NewEvent (kindUidFromApi kind) (subjectUidFromApi subject) (actionFromApi action) (eventDataFromApi body))
+          creation <- A.addEvent (P.NewEvent (subjectFromApi kind subject) (actionFromApi action) (eventDataFromApi body))
           case creation of
             Right uid -> return $ return $ eventUidToNewEventApi uid
             Left e    -> return $ throwError $ err400 { errBody = packChars $ show e }
         get :: P.Persist p => KindUid -> SubjectUid -> LiftedHandler p [Event]
         get kind subject = LiftHandler $ do
-          fetched <- A.listEvents (kindUidFromApi kind) (subjectUidFromApi subject)
+          fetched <- A.listEvents $ subjectFromApi kind subject
           case fetched of
             Just xs -> return $ return $ eventToApi <$> xs
             Nothing -> return $ throwError $ err404 { errBody = packChars $ "Subject unknown" }
 
+subscribers :: P.Persist p => ServerT SubscriberEndpoint (LiftedHandler p)
+subscribers = post :<|> delete :<|> get
+  where post :: P.Persist p => Subscriber -> Subscription -> LiftedHandler p ()
+        post subscriber subscription = LiftHandler $ do
+          existingSubject <- A.subscribe (subscriptionFromApi subscriber subscription)
+          case existingSubject of
+            True  -> return $ return ()
+            False -> return $ throwError $ err404 { errBody = packChars $ "Subject unknown" }
+        delete :: P.Persist p => Subscriber -> Subscription -> LiftedHandler p ()
+        delete subscriber subscription = LiftHandler $ do
+          existingSubject <- A.unsubscribe (subscriptionFromApi subscriber subscription)
+          case existingSubject of
+            True  -> return $ return ()
+            False -> return $ throwError $ err404 { errBody = packChars $ "Subject unknown" }
+        get :: P.Persist p => Subscriber -> Bool -> LiftedHandler p [Notification]
+        get subscriber view = LiftHandler $ do
+          (return . map notificationToApi) <$> A.viewNotifiations (subscriberFromApi subscriber) view
+
 server :: P.Persist p => ServerT HermesAPI (LiftedHandler p)
-server = kind :<|> subject :<|> event
+server = kind :<|> subject :<|> event :<|> subscribers
 
 app :: P.Persist p => P.Configuration p -> Application
 app p = serve hermesAPI $ hoistServer hermesAPI toHandler server
@@ -84,11 +102,20 @@ kindUidFromApi (KindUid x) = T.KindUid x
 subjectUidFromApi :: SubjectUid -> T.SubjectUid
 subjectUidFromApi (SubjectUid x) = T.SubjectUid x
 
+subjectFromApi :: KindUid -> SubjectUid -> T.Subject
+subjectFromApi kind subject = T.Subject (kindUidFromApi kind) (subjectUidFromApi subject)
+
 actionFromApi :: Action -> T.Action
 actionFromApi (Action x) = T.Action x
 
 eventDataFromApi :: EventData -> T.EventData
 eventDataFromApi (EventData x) = T.EventData x
+
+subscriberFromApi :: Subscriber -> T.Subscriber
+subscriberFromApi (Subscriber x) = T.Subscriber x
+
+subscriptionFromApi :: Subscriber -> Subscription -> T.Subscription
+subscriptionFromApi subscriber (Subscription kind subject) = T.Subscription (subscriberFromApi subscriber) (subjectFromApi kind subject)
 
 kindUidToApi :: T.KindUid -> KindUid
 kindUidToApi (T.KindUid x) = KindUid x
@@ -109,4 +136,7 @@ eventUidToNewEventApi :: T.EventUid -> NewEvent
 eventUidToNewEventApi = NewEvent . eventUidToApi
 
 eventToApi :: T.Event -> Event
-eventToApi (T.Event _ _ u (T.Action a) (T.EventData d)) = Event (eventUidToApi u) (Action a) (EventData d)
+eventToApi (T.Event _ u a d) = Event (eventUidToApi u) (actionToApi a) (eventDataToApi d)
+
+notificationToApi :: T.Notification -> Notification
+notificationToApi (T.Event (T.Subject k s) u a d) = Notification (kindUidToApi k) (subjectUidToApi s) (eventUidToApi u) (actionToApi a) (eventDataToApi d)
