@@ -1,5 +1,5 @@
 source 'https://rubygems.org'
 
 gem 'cucumber'
-gem 'rest-client'
+gem 'http', '~> 4.4', '>= 4.4.1'
 gem 'rspec-expectations'
