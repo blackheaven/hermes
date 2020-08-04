@@ -21,21 +21,25 @@ library
                      , Control.Hermes.Persistence
                      , Control.Hermes.Persistence.SQLite
                      , Control.Hermes.Persistence.Persistent
+                     , Control.Hermes.RabbitMQ
   build-depends:       base >= 4.12 && < 5
                      , aeson >= 1.4.2.0 && < 1.5
-                     , bytestring >= 0.10.8.2 && < 0.10.9
-                     , containers >= 0.6.0.1 && < 0.6.1
+                     , amqp >= 0.19.1 && < 0.21
+                     , amqp-streamly >= 0.1.0 && < 0.2
+                     , bytestring >= 0.10.10.0 && < 0.11
+                     , containers >= 0.6.2.1 && < 0.7
                      , either >= 5.0.1.1 && < 5.0.2
                      , exceptions >= 0.10.2 && < 0.11
                      , http-api-data >= 0.4 && < 0.5
                      , monad-logger >= 0.3.30 && < 0.4
                      , path-pieces >= 0.2.1 && < 0.3
-                     , persistent >= 2.9.2 && < 2.10
-                     , persistent-sqlite >= 2.9.2 && < 2.10
-                     , persistent-template >= 2.5.4 && < 2.6
+                     , persistent >= 2.10.5.2 && < 2.11
+                     , persistent-sqlite >= 2.10.6.2 && < 2.11
+                     , persistent-template >= 2.8.2.3 && < 2.9
                      , resourcet >= 1.2.2 && < 1.3
-                     , text >= 1.2.3.1 && < 1.2.4
+                     , text >= 1.2.4.0 && < 1.2.5
                      , transformers >= 0.5.6.2 && < 0.5.7
+                     , streamly >= 0.7.2 && < 0.8
                      , uuid >= 1.3.13 && < 1.4
                      , utf8-string >= 1.0.1.1 && < 1.1
   default-language:    Haskell2010
@@ -47,13 +51,18 @@ executable hermes
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , hermes
-                     , aeson >= 1.4.2.0 && < 1.5
-                     , bytestring >= 0.10.8.2 && < 0.10.9
-                     , servant >= 0.15 && < 0.16
-                     , servant-server >= 0.15 && < 0.16
-                     , text >= 1.2.3.1 && < 1.2.4
-                     , uuid >= 1.3.13 && < 1.4
-                     , warp >= 3.2.27 && < 3.3
+                     , aeson
+                     , amqp
+                     , bytestring
+                     , HTTP == 4000.3.*
+                     , network-uri >= 2.6.3.0 && < 2.6.4
+                     , servant >= 0.16.2 && < 0.17
+                     , servant-server >= 0.16.2 && < 0.17
+                     , servant-streamly >= 0.1.0 && < 0.2
+                     , streamly
+                     , text
+                     , uuid
+                     , warp >= 3.3.13 && < 3.4
                      , wai-logger >= 2.3.5 && < 2.4
   default-language:    Haskell2010
 
@@ -62,14 +71,20 @@ test-suite hermes-test
   hs-source-dirs:      test
   other-modules:       Control.Hermes.PersistenceSpec
                      , Control.Hermes.ActionsSpec
+                     , Control.Hermes.RabbitMQUtils
   main-is:             Spec.hs
   build-depends:       base
                      , hermes
-                     , aeson >= 1.4.2.0 && < 1.5
-                     , hspec
-                     , QuickCheck
-                     , text >= 1.2.3.1 && < 1.2.4
-                     , uuid >= 1.3.13 && < 1.4
+                     , aeson
+                     , amqp
+                     , async >= 2.2.2 && < 2.3
+                     , hspec >= 2.7.1 && < 2.8
+                     , hspec-core >= 2.7.1 && < 2.8
+                     , process >= 1.6.8.0 && < 1.7
+                     , streamly
+                     , testcontainers == 0.1.*
+                     , text
+                     , uuid
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 

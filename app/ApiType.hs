@@ -1,14 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module ApiType where
 
 import qualified Control.Hermes.Types as T
+import Streamly(SerialT)
 import Data.Aeson
-import Data.Aeson.Types
 import Data.Proxy
 import GHC.Generics
 import Servant.API
@@ -39,11 +38,12 @@ type EventEndpoint =
   :<|> EventPrefixer (Get  '[JSON] [Event])
 
 type SubscriberPrefixer a =
-  "subscribers" :> a
+  "subscribers" :> Capture "subscriber" Subscriber :> a
 type SubscriberEndpoint =
-       SubscriberPrefixer (Capture "subscriber" Subscriber :> ReqBody '[JSON] Subscription :> Post '[JSON] ())
-  :<|> SubscriberPrefixer (Capture "subscriber" Subscriber :> ReqBody '[JSON] Subscription :> Delete '[JSON] ())
-  :<|> SubscriberPrefixer (Capture "subscriber" Subscriber :> QueryFlag "view" :> Get  '[JSON] [Notification])
+       SubscriberPrefixer (ReqBody '[JSON] Subscription :> Post '[JSON] ())
+  :<|> SubscriberPrefixer (ReqBody '[JSON] Subscription :> Delete '[JSON] ())
+  :<|> SubscriberPrefixer (QueryFlag "view" :> Get  '[JSON] [Notification])
+  :<|> SubscriberPrefixer ("poll" :> StreamGet NewlineFraming JSON (SerialT IO Notification))
 
 newtype Action = Action String deriving Generic
 instance ToJSON Action
@@ -60,7 +60,7 @@ instance FromJSON Subscriber
 instance FromHttpApiData Subscriber where
   parseUrlPiece = fmap Subscriber . parseUrlPiece
 
-data KindBody = KindBody [Action] deriving Generic
+newtype KindBody = KindBody [Action] deriving Generic
 instance ToJSON KindBody
 instance FromJSON KindBody
 

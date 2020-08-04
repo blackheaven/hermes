@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-13.26
+resolver: lts-16.4
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,7 +37,13 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)
-# extra-deps: []
+extra-deps:
+- git: https://github.com/blackheaven/amqp-streamly.git
+  commit: 3e963dea915a55ae0970234ad8e03783a0e8bc43
+- git: https://github.com/blackheaven/servant-streamly.git
+  commit: 8579aacff05e10a56ae453f19656f6453f669f92
+- git: https://github.com/blackheaven/testcontainers-hs.git
+  commit: bf74848f19313e5708f78f9bef30cd588a7c9ea5
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

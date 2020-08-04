@@ -1,11 +1,7 @@
-{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Control.Hermes.Persistence.Persistent where
@@ -41,8 +37,8 @@ instance PersistFieldSql H.SubjectUid where
 
 instance PersistField H.Subject where
     toPersistValue = PersistText . decodeUtf8 . toStrict . encode
-    fromPersistValue = (>>= convert) . (fmap (fromStrict . encodeUtf8)) . fromPersistValueText
-     where convert x = maybeToRight (pack $ "Unable to deserialize '" ++ (unpack $ decodeUtf8 $ toStrict x) ++ "'") $ decode x
+    fromPersistValue = (>>= convert) . fmap (fromStrict . encodeUtf8) . fromPersistValueText
+     where convert x = maybeToRight (pack $ "Unable to deserialize '" ++ unpack (decodeUtf8 $ toStrict x) ++ "'") $ decode x
 
 instance PersistFieldSql H.Subject where
     sqlType _ = SqlString

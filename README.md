@@ -6,8 +6,10 @@ The goal of this project is to provide a REST API to register events and manage 
 
 # TODO
 
+ * Document API (Swagger)
+ * Use https://hackage.haskell.org/package/lackey for cucumber tests
  * Enable all persistent backends
 
-## Ops ocncerns:
+## Ops concerns:
 
  * Add an APM (logging, metrics (per query))

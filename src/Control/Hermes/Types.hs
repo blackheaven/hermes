@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Control.Hermes.Types(
                              KindUid(..)
@@ -15,6 +14,9 @@ module Control.Hermes.Types(
                            , Notification
                            , extractAction
                            , extractEventData
+                           , extractEventUid
+                           , extractSubjectUid
+                           , extractKindUid
                            ) where
 
 import Data.Aeson.Types(Value)
@@ -22,6 +24,10 @@ import Data.UUID(UUID)
 import GHC.Generics
 
 newtype KindUid = KindUid String deriving (Eq, Generic, Ord, Read, Show)
+
+extractKindUid :: KindUid -> String
+extractKindUid (KindUid x) = x
+
 newtype Action = Action String deriving (Eq, Generic, Ord, Read, Show)
 
 extractAction :: Action -> String
@@ -34,12 +40,19 @@ data Kind = Kind {
 
 newtype SubjectUid = SubjectUid String deriving (Eq, Generic, Ord, Read, Show)
 
+extractSubjectUid :: SubjectUid -> String
+extractSubjectUid (SubjectUid x) = x
+
 data Subject = Subject {
                subjectKind :: KindUid
              , subjectUid  :: SubjectUid
              } deriving (Eq, Generic, Ord, Read, Show)
 
 newtype EventUid = EventUid UUID deriving (Eq, Generic, Ord, Read, Show)
+
+extractEventUid :: EventUid -> UUID
+extractEventUid (EventUid x) = x
+
 newtype EventData = EventData Value deriving (Eq, Generic, Read, Show)
 
 extractEventData :: EventData -> Value

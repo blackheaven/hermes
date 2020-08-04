@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -8,8 +9,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Control.Hermes.Persistence.SQLite(persistSQLite) where
 
@@ -131,12 +134,12 @@ instance H.Persist (ReaderT SqlBackend (NoLoggingT (ResourceT IO))) where
     map eventFromEntity <$> fetchEvents
     where fetchEvents = map entityVal <$> selectList [EventSubject ==. subject] [Asc EventIndex]
 
-  subscribe  (H.Subscription subscriber subject) = do
+  subscribe (H.Subscription subscriber subject) = do
     event <- lastEvent subject
     let perform e = insertSubscription subscriber subject e True $> eventUid e
     sequence $ perform <$> event
 
-  unsubscribe  (H.Subscription subscriber subject) = do
+  unsubscribe (H.Subscription subscriber subject) = do
     event <- lastEvent subject
     previousSubscriptionEvent <- fmap entityVal <$> selectFirst [SubscriptionSubscriber ==. subscriber, SubscriptionSubject ==. subject] [Desc SubscriptionIndex]
     let previousSubscription = previousSubscriptionEvent >>= \e -> if subscriptionSubscribe e then Just e else Nothing

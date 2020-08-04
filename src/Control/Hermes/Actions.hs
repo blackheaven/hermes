@@ -15,7 +15,9 @@ module Control.Hermes.Actions(
 
 import qualified Control.Hermes.Persistence as P
 import Control.Hermes.Types
+import Control.Monad(when)
 import Data.Maybe(isJust)
+import Data.Text (pack)
 
 createKind :: P.Persist p => Kind -> p (Either NewKindStatusError ())
 createKind kind = do
@@ -48,7 +50,7 @@ addEvent event = do
   allowedActions <- P.listAllowedActions (P.newEventSubject event)
   case allowedActions of
     Nothing      -> return $ Left EventSubjectDoesNotExistsError
-    Just actions -> do
+    Just actions ->
       if notElem (P.newEventAction event) actions
         then return $ Left EventActionNotAllowedError
         else Right <$> P.newEvent event
@@ -66,7 +68,7 @@ unsubscribe subscription = isJust <$> P.unsubscribe subscription
 viewNotifiations :: P.Persist p => Subscriber -> Bool -> p [Notification]
 viewNotifiations subscriber view = do
   notifications <- P.listNotifiations subscriber
-  if view then P.viewNotifiations subscriber else return ()
+  when view $ P.viewNotifiations subscriber
   return notifications
 
 data NewKindStatusError =
